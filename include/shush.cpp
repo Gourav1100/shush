@@ -135,7 +135,7 @@ void Shush::init(int argc, char const *argv[]) {
         this->remove_system();
         return;
     }
-    cout << "Shush v" << APPLICATION_VERSION << " - SSH Key and Password Manager." << endl;
+    cout << "Shush v" << APPLICATION_VERSION << " - SSH Utility for credentials and access management." << endl;
     cout << "Use --help to see available arguments" << endl;
 }
 
