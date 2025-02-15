@@ -1,0 +1,6 @@
+# C++ BUILD FILES
+build/*
+**/*.o
+
+# vscode config
+.vscode/*
