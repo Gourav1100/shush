@@ -9,11 +9,11 @@
 using namespace std;
 
 #define APPLICATION "shush"
-#define APPLICATION_VERSION "1.0.0"
+#define APPLICATION_VERSION "1.1.0"
 #define SHUSH_HEADERS                                                                                                  \
-    { "System / Host", "User", "Login via SSH Key", "Login via Password" }
+    { "Alias", "System / Host", "User", "Login via SSH Key", "Login via Password" }
 #define SHUSH_LIST_HEADERS                                                                                             \
-    { "System / Host" }
+    { "Alias", "System / Host" }
 
 inline std::unordered_map<std::string, int> ArgumentTypes = {{"help", NON_VALUED_ARGUMENT},
                                                              {"yes", NON_VALUED_ARGUMENT},
@@ -27,6 +27,8 @@ inline std::unordered_map<std::string, int> ArgumentTypes = {{"help", NON_VALUED
                                                              {"user", VALUED_ARGUMENT},
                                                              {"key", VALUED_ARGUMENT},
                                                              {"password", VALUED_ARGUMENT},
+                                                             {"alias", VALUED_ARGUMENT},
+                                                             {"z", VALUED_ARGUMENT},
                                                              {"s", OPTIONALY_VALUED_ARGUMENT},
                                                              {"h", NON_VALUED_ARGUMENT},
                                                              {"y", NON_VALUED_ARGUMENT},
@@ -57,10 +59,12 @@ class Shush {
     bool systemFlag = 0;
     bool KeyFlag = 0;
     bool passwordFlag = 0;
+    bool aliasFlag = 0;
     string _system = "";
     string _ssh_key = "";
     string _user = "";
     string _password = "";
+    string _alias = "";
 
     void help();
     void prepare();
@@ -70,6 +74,7 @@ class Shush {
     void connect_system();
 
     vector<SystemObject> get_system_objects();
+    vector<SystemObject> get_system_header_objects();
 
   public:
     Shush();

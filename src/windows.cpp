@@ -1,14 +1,10 @@
 #include "../include/shush.h"
 
-int main(int argc, char const *argv[])
-{
+int main(int argc, char const *argv[]) {
     Shush application = Shush(SystemType::WINDOWS);
-    try
-    {
+    try {
         application.init(argc, argv);
-    }
-    catch (Exception e)
-    {
+    } catch (const exception &e) {
         cout << bold("Error: ") << italic(e.what()) << endl;
     }
     return 0;

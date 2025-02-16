@@ -60,8 +60,8 @@ std::vector<std::string> System::list_directory(std::string path) {
 }
 
 std::string System::read(std::string file) {
-    std::fstream reader(file);
     std::string content;
+    std::fstream reader(file);
     reader >> content;
     reader.close();
     return content;

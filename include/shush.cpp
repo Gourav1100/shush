@@ -3,7 +3,7 @@
 Shush::Shush(SystemType system_type) : system(system_type), arguments(0, {}, ArgumentTypes) {}
 
 void Shush::help() {
-    cout << "Shush - SSH Key and Password Manager" << endl;
+    cout << "Shush v" << APPLICATION_VERSION << " - SSH Utility for credentials and access management." << endl;
     cout << "Usage: shush [options] [value]" << endl;
     cout << "Options:" << endl;
     cout << "  --help, -h: Show this help message" << endl;
@@ -12,26 +12,24 @@ void Shush::help() {
     cout << "  --add, -a: Add a new key" << endl;
     cout << "  --connect, -c: Connect to a system" << endl;
     cout << "  --list, -l: List all Systems / Hostnames" << endl;
-    cout << "  --list --system <system_name>, -ls <system_name>: List Users in a systems" << endl;
+    cout << "  --list --system <system_name | alias>, -ls <system_name | alias>: List Users in a systems" << endl;
     cout << "  --remove, -r: Remove a system configuration" << endl;
     cout << "  --update, -e: Update a system configuration" << endl;
 
     cout << "  --user, -u: Specify the login user" << endl;
     cout << "  --system, --host, -s: Specify the system/hostname to add" << endl;
+    cout << "  --alias, -z: Specify the alias for the system/hostname" << endl;
     cout << "  --key, -k: Specify the ssh private key location" << endl;
     cout << "  --password, -p: Specify the login credentials" << endl;
 
     cout << "Examples:" << endl;
     cout << "  shush --add -s example.com -u user -k /path/to/key.pem" << endl;
-    cout << "  shush --add -sup example.com user password" << endl;
     cout << "  shush -asup example.com user password" << endl;
     cout << "  shush --connect -s example.com -u user" << endl;
-    cout << "  shush --connect -su example.com user" << endl;
     cout << "  shush -csu example.com user" << endl;
     cout << "  shush --list" << endl;
-    cout << "  shush --list --system example.com" << endl;
     cout << "  shush -ls example.com" << endl;
-    cout << "  shush -rsy localhost" << endl;
+    cout << "  shush -sry localhost" << endl;
     cout << endl;
 }
 
@@ -57,15 +55,32 @@ vector<SystemObject> Shush::get_system_objects() {
     vector<SystemObject> system_objects;
     for (string system : systems) {
         const string system_path = this->system.join_path(config_base, system);
+        const string alias_path = this->system.join_path(system_path, "alias.txt");
+        const string alias = this->system.exists(alias_path) ? this->system.read(alias_path) : system;
         const string users_path = this->system.join_path(system_path, "users");
-        const vector<string> users = this->system.list_directory(users_path);
+        const vector<string> users =
+            this->system.exists(users_path) ? this->system.list_directory(users_path) : vector<string>();
         for (string user : users) {
             const string user_path = this->system.join_path(users_path, user);
             const bool password_exists = this->system.exists(this->system.join_path(user_path, "password.txt"));
             const bool ssh_key_exists = this->system.exists(this->system.join_path(user_path, "key.pem"));
-            SystemObject system_object = {password_exists, ssh_key_exists, user, system};
+            SystemObject system_object = {password_exists, ssh_key_exists, user, system, alias};
             system_objects.push_back(system_object);
         }
+    }
+    return system_objects;
+}
+
+vector<SystemObject> Shush::get_system_header_objects() {
+    const string config_base = this->system.get_config_base(APPLICATION);
+    const vector<string> systems = this->system.list_directory(config_base);
+    vector<SystemObject> system_objects;
+    for (string system : systems) {
+        const string system_path = this->system.join_path(config_base, system);
+        const string alias_path = this->system.join_path(system_path, "alias.txt");
+        const string alias = this->system.exists(alias_path) ? this->system.read(alias_path) : system;
+        SystemObject system_object = {false, false, "", system, alias};
+        system_objects.push_back(system_object);
     }
     return system_objects;
 }
@@ -98,6 +113,9 @@ void Shush::init(int argc, char const *argv[]) {
             if (this->_system.size() == 0) {
                 this->_system = this->arguments.Get("host");
             }
+        } else if (key == "alias" || key == "z") {
+            this->aliasFlag = true;
+            this->_alias = key == "alias" ? this->arguments.Get("alias") : this->arguments.Get("z");
         } else if (key == "user" || key == "u") {
             this->userFlag = true;
             this->_user = key == "user" ? this->arguments.Get("user") : this->arguments.Get("u");
@@ -120,18 +138,30 @@ void Shush::init(int argc, char const *argv[]) {
         return;
     }
     if (this->listFlag) {
-        this->list_systems(this->systemFlag && !this->arguments.isParserDefault(this->_system));
+        if (this->aliasFlag && this->systemFlag) {
+            throw Exception("Both alias and system/hostname cannot be used together. Use either --alias or --system");
+        }
+        this->list_systems((this->systemFlag && !this->arguments.isParserDefault(this->_system)) || this->aliasFlag);
         return;
     }
     if (this->connectFlag) {
+        if (this->aliasFlag && this->systemFlag) {
+            throw Exception("Both alias and system/hostname cannot be used together. Use either --alias or --system");
+        }
         this->connect_system();
         return;
     }
     if (this->addFlag || this->updateFlag) {
+        if (this->addFlag && this->updateFlag) {
+            throw Exception("Both add and update cannot be used together. Use either --add or --update");
+        }
         this->add_system(updateFlag > 0);
         return;
     }
     if (this->removeFlag) {
+        if (this->aliasFlag && this->systemFlag) {
+            throw Exception("Both alias and system/hostname cannot be used together. Use either --alias or --system");
+        }
         this->remove_system();
         return;
     }
@@ -139,12 +169,16 @@ void Shush::init(int argc, char const *argv[]) {
     cout << "Use --help to see available arguments" << endl;
 }
 
-void message(string system, string user = "") {
+void message(string system, string alias, string user = "") {
     cout << "System/Host added successfully" << endl;
     if (user.size() == 0) {
-        cout << "Use " << bold("shush --connect -s " + system) << " to connect to the system" << endl;
+        cout << "Use " << bold("shush --connect -s " + system) << " to connect using the system/host" << endl;
+        cout << "or use" << bold("shush --connect -z " + alias) << " to connect using the alias" << endl;
     } else {
-        cout << "Use " << bold("shush --connect -s " + system + " -u " + user) << " to connect to the system" << endl;
+        cout << "Use " << bold("shush --connect -s " + system + " -u " + user) << " to connect using the system/host"
+             << endl;
+        cout << "or use " << bold("shush --connect -z " + alias + " -u " + user) << " to connect using the alias"
+             << endl;
     }
     cout << "or " << bold("shush --connect") << " to connect via an interactive menu" << endl;
 }
@@ -152,20 +186,61 @@ void message(string system, string user = "") {
 void Shush::add_system(bool update = false) {
     // system validation
     if (!this->systemFlag) {
-        return;
+        if (!this->aliasFlag) {
+            throw Exception("Nothing to do!! Alias or System/Host is required");
+        }
+        const vector<SystemObject> system_objects = this->get_system_header_objects();
+        for (SystemObject system : system_objects) {
+            if (system.alias == this->_alias) {
+                this->_system = system.system;
+                break;
+            }
+        }
+        if (this->_system.size() == 0) {
+            throw Exception("System/Host not found");
+        }
     }
-    if (this->_system.size() == 0) {
+    if (this->arguments.isParserDefault(this->_system)) {
         throw Exception("System/Host is required");
     }
     const string system_path = this->system.join_path(this->system.get_config_base(APPLICATION), this->_system);
     if (!this->system.exists(system_path)) {
+        // validate alias
+        if (!this->aliasFlag) {
+            this->_alias = this->_system;
+        }
+        for (SystemObject system_object : this->get_system_objects()) {
+            if (system_object.alias == this->_alias) {
+                throw Exception("Alias already exists");
+            }
+        }
         this->system.make_directory(system_path);
+        cout << "system created, adding alias..." << endl;
+        const string alias_path = this->system.join_path(system_path, "alias.txt");
+        this->system.write(alias_path, this->_alias);
+        cout << "alias created" << endl;
+    } else if (update && this->aliasFlag) {
+        if (!this->systemFlag && !this->userFlag) {
+            throw Exception("--system flag is required to update the alias");
+        }
+        if (!this->userFlag) {
+            for (SystemObject system_object : this->get_system_objects()) {
+                if (system_object.alias == this->_alias && system_object.system != this->_system) {
+                    throw Exception("Alias already exists");
+                }
+            }
+            const string alias_path = this->system.join_path(system_path, "alias.txt");
+            this->system.write(alias_path, this->_alias);
+            cout << "Alias updated" << endl;
+            cout << "System/Host updated successfully" << endl;
+            return;
+        }
     } else if (!this->userFlag) {
         throw Exception("System/Host already exists");
     }
     // user validation
     if (!this->userFlag) {
-        message(this->_system);
+        message(this->_system, this->_alias);
         return;
     }
     const string users_path = this->system.join_path(system_path, "users");
@@ -174,13 +249,20 @@ void Shush::add_system(bool update = false) {
         this->system.make_directory(users_path);
     }
     if (!this->system.exists(user_path)) {
+        if (update) {
+            throw Exception("User not found");
+        }
         this->system.make_directory(user_path);
+        cout << "user created" << endl;
     } else if (!this->KeyFlag && !this->passwordFlag) {
+        if (update) {
+            throw Exception("User update requires either key or password");
+        }
         throw Exception("User already exists");
     }
     // Credentials validation
     if (!this->KeyFlag && !this->passwordFlag) {
-        message(this->_system, this->_user);
+        message(this->_system, this->_alias, this->_user);
         return;
     }
     const string key_path = this->system.join_path(user_path, "key.pem");
@@ -194,28 +276,31 @@ void Shush::add_system(bool update = false) {
         throw Exception("Password already exists");
     }
     if (this->_ssh_key.size() > 0) {
+        cout << "SSH Key updated" << endl;
         this->system.copy(this->_ssh_key, key_path);
     } else if (this->_password.size() > 0) {
+        cout << "Password updated" << endl;
         this->system.write(password_path, this->_password);
     }
     if (update) {
         cout << "System/Host updated successfully" << endl;
         return;
     }
-    message(this->_system, this->_user);
+    message(this->_system, this->_alias, this->_user);
 }
 
 void Shush::list_systems(bool detailed = false) {
     vector<SystemObject> system_objects = this->get_system_objects();
-    if (!detailed && (!this->systemFlag || this->arguments.isParserDefault(this->_system))) {
+    vector<SystemObject> system_header_objects = this->get_system_header_objects();
+    if (!detailed) {
         vector<string> headers = SHUSH_LIST_HEADERS;
         vector<vector<string>> data;
         unordered_map<string, bool> unique_systems;
-        for (SystemObject system_object : system_objects) {
+        for (SystemObject system_object : system_header_objects) {
             if (unique_systems[system_object.system]) {
                 continue;
             }
-            vector<string> row = {system_object.system};
+            vector<string> row = {system_object.alias, system_object.system};
             data.push_back(row);
             unique_systems[system_object.system] = true;
         }
@@ -224,23 +309,40 @@ void Shush::list_systems(bool detailed = false) {
     }
     vector<string> headers = SHUSH_HEADERS;
     vector<vector<string>> data;
+    if (this->_system.size() == 0) {
+        this->_system = this->_alias;
+    }
     for (SystemObject system_object : system_objects) {
-        if (this->_system.size() > 0 && system_object.system != this->_system) {
+        if (system_object.system != this->_system && system_object.alias != this->_system) {
             continue;
         }
-        vector<string> row = {system_object.system, system_object.username, system_object.ssh_key_exists ? "Yes" : "No",
+        vector<string> row = {system_object.alias, system_object.system, system_object.username,
+                              system_object.ssh_key_exists ? "Yes" : "No",
                               system_object.password_exisits ? "Yes" : "No"};
         data.push_back(row);
     }
-    print_tabular(headers, data, "No users found for system/hostname: " + this->_system);
+    print_tabular(headers, data,
+                  std::string("No users found for ") + (this->aliasFlag ? "alias " : "system/hostname ") +
+                      this->_system);
 }
 
 void Shush::remove_system() {
     // delete system
     if (!this->systemFlag) {
-        return;
+        if (!this->aliasFlag) {
+            throw Exception("System/Host or Alias is required");
+        }
+        for (SystemObject system_object : this->get_system_objects()) {
+            if (system_object.alias == this->_alias) {
+                this->_system = system_object.system;
+                break;
+            }
+        }
+        if (this->_system.size() == 0) {
+            throw Exception("System/Host not found");
+        }
     }
-    if (this->_system.size() == 0) {
+    if (this->arguments.isParserDefault(this->_system)) {
         throw Exception("System/Host is required");
     }
     const string system_path = this->system.join_path(this->system.get_config_base(APPLICATION), this->_system);
@@ -294,24 +396,34 @@ void Shush::remove_system() {
 }
 
 void Shush::connect_system() {
+    vector<SystemObject> system_header_objects = this->get_system_header_objects();
     vector<SystemObject> system_objects = this->get_system_objects();
-    if (this->_system.size() == 0 || !this->systemFlag) {
-        vector<string> menu_options_select_system;
-        unordered_map<string, SystemObject> system_objects_map;
-        for (SystemObject system_object : system_objects) {
-            system_objects_map[system_object.system] = system_object;
+    if (this->aliasFlag) {
+        this->_system = "";
+        for (SystemObject system_object : system_header_objects) {
+            if (system_object.alias == this->_alias) {
+                this->_system = system_object.system;
+                break;
+            }
         }
-        for (SystemObject system_object : system_objects) {
-            menu_options_select_system.push_back(system_object.system);
+        if (this->_system.size() == 0) {
+            throw Exception("Alias not found");
+        }
+    }
+    if ((!this->systemFlag && !this->aliasFlag) ||
+        (this->systemFlag && this->arguments.isParserDefault(this->_system))) {
+        vector<string> menu_options_select_system;
+        for (SystemObject system_object : system_header_objects) {
+            menu_options_select_system.push_back(system_object.system + " ( Alias - " + system_object.alias + ")");
         }
         Menu menu = Menu("Select System -", menu_options_select_system);
         int selected_system = menu.navigate();
         if (selected_system == -1) {
             throw Exception("System not selected");
         }
-        this->_system = menu_options_select_system[selected_system];
+        this->_system = system_header_objects[selected_system].system;
     }
-    if (this->_user.size() == 0 || !this->userFlag) {
+    if (!this->userFlag) {
         vector<string> users;
         for (SystemObject system_object : system_objects) {
             if (system_object.system == this->_system) {
@@ -319,7 +431,7 @@ void Shush::connect_system() {
             }
         }
 
-        Menu menu = Menu("Select User -", users);
+        Menu menu = Menu("Select User - ", users);
         int selected_user = menu.navigate();
         if (selected_user == -1) {
             throw Exception("User not selected");

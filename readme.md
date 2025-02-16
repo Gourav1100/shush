@@ -6,6 +6,7 @@ Shush is a command-line utility designed to simplify and manage SSH credentials 
 
 - Interactive menu for easy navigation
 - Filesystem based data management
+- Alias based ssh management and connection initiation
 
 ## Getting Started
 

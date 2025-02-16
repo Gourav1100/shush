@@ -15,6 +15,7 @@ struct SystemObject {
     bool ssh_key_exists = false;
     std::string username = "";
     std::string system = "";
+    std::string alias = "";
 };
 
 #endif

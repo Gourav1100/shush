@@ -24,6 +24,33 @@ ArgumentParser::ArgumentParser(int argc, char const *argv[], std::unordered_map<
 std::string ArgumentParser::Get(std::string key) { return this->arguments[key]; }
 
 void ArgumentParser::parse() {
+    std::vector<std::string> unknown_arguments;
+    for (int i = 1; i < this->argc; i++) {
+        std::string arg = this->argv[i];
+        std::string key;
+        bool short_hand = false;
+        if (arg.find("--") == 0) {
+            key = to_lower(arg.substr(2));
+        } else if (arg.find("-") == 0) {
+            key = to_lower(arg.substr(1));
+            short_hand = true;
+        } else {
+            continue;
+        }
+        if (!short_hand && this->argument_type.find(key) == this->argument_type.end()) {
+            unknown_arguments.push_back(key);
+        } else if (short_hand) {
+            for (char c : key) {
+                std::string k = std::string(1, c);
+                if (this->argument_type.find(k) == this->argument_type.end()) {
+                    unknown_arguments.push_back(k);
+                }
+            }
+        }
+    }
+    if (unknown_arguments.size() > 0) {
+        throw Exception("Unknown arguments: " + join(unknown_arguments, ", "));
+    }
     int index = 1;
     while (index < this->argc) {
         std::string arg = this->argv[index];

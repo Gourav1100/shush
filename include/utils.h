@@ -100,4 +100,15 @@ inline bool prompt(std::string message) {
     return to_lower(response) == "y" || to_lower(response) == "yes";
 };
 
+inline std::string join(std::vector<std::string> strings, std::string delimiter) {
+    std::string result = "";
+    for (int i = 0; i < (int)strings.size(); i++) {
+        result += strings[i];
+        if (i < (int)strings.size() - 1) {
+            result += delimiter;
+        }
+    }
+    return result;
+};
+
 #endif
