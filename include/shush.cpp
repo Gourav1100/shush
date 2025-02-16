@@ -455,6 +455,7 @@ void Shush::connect_system() {
         runner.execute("ssh -i " + key_path + " " + this->_user + "@" + this->_system);
     } else {
         const string password = this->system.read(password_path);
-        runner.execute("sshpass -p '" + password + "' ssh " + this->_user + "@" + this->_system, true);
+        runner.execute(
+            "sshpass -p '" + password + "' ssh -o StrictHostKeyChecking=no " + this->_user + "@" + this->_system, true);
     }
 }
