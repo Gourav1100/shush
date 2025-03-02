@@ -100,12 +100,18 @@ void Shush::init(int argc, char const *argv[]) {
             this->addFlag = true;
         } else if (key == "list" || key == "l") {
             this->listFlag = true;
+            this->_list_index = key == "list" ? this->arguments.Get("list") : this->arguments.Get("l");
         } else if (key == "remove" || key == "r") {
             this->removeFlag = true;
+            this->_remove_index = key == "remove" ? this->arguments.Get("remove") : this->arguments.Get("r");
         } else if (key == "update" || key == "e") {
             this->updateFlag = true;
         } else if (key == "connect" || key == "c") {
             this->connectFlag = true;
+            this->_connect_index = key == "connect" ? this->arguments.Get("connect") : this->arguments.Get("c");
+        } else if (key == "alias" || key == "z") {
+            this->aliasFlag = true;
+            this->_alias = key == "alias" ? this->arguments.Get("alias") : this->arguments.Get("z");
         } else if (key == "system" || key == "host" || key == "s") {
             this->systemFlag = true;
             this->_system =
@@ -113,9 +119,6 @@ void Shush::init(int argc, char const *argv[]) {
             if (this->_system.size() == 0) {
                 this->_system = this->arguments.Get("host");
             }
-        } else if (key == "alias" || key == "z") {
-            this->aliasFlag = true;
-            this->_alias = key == "alias" ? this->arguments.Get("alias") : this->arguments.Get("z");
         } else if (key == "user" || key == "u") {
             this->userFlag = true;
             this->_user = key == "user" ? this->arguments.Get("user") : this->arguments.Get("u");
@@ -128,7 +131,7 @@ void Shush::init(int argc, char const *argv[]) {
         } else {
             cout << "Unknown argument: " << key << endl;
             cout << "Use --help to see available arguments" << endl;
-            break;
+            return;
         }
     }
 
@@ -141,7 +144,8 @@ void Shush::init(int argc, char const *argv[]) {
         if (this->aliasFlag && this->systemFlag) {
             throw Exception("Both alias and system/hostname cannot be used together. Use either --alias or --system");
         }
-        this->list_systems((this->systemFlag && !this->arguments.isParserDefault(this->_system)) || this->aliasFlag);
+        this->list_systems((this->systemFlag && !this->arguments.isParserDefault(this->_system)) || this->aliasFlag ||
+                           !this->arguments.isParserDefault(this->_list_index));
         return;
     }
     if (this->connectFlag) {
@@ -307,6 +311,29 @@ void Shush::list_systems(bool detailed = false) {
         print_tabular(headers, data, "No systems / hosts found");
         return;
     }
+    if (!this->arguments.isParserDefault(this->_list_index)) {
+        if (isNumber(this->_list_index)) {
+            const int index = stoi(this->_list_index);
+            if (index >= (int)system_header_objects.size()) {
+                throw Exception("System not found");
+            }
+            this->_system = system_header_objects[index].system;
+            this->_alias = system_header_objects[index].alias;
+        } else {
+            this->_system = "";
+            this->_alias = "";
+            for (SystemObject system_object : system_header_objects) {
+                if (system_object.alias == this->_list_index || system_object.system == this->_list_index) {
+                    this->_system = system_object.system;
+                    this->_alias = system_object.alias;
+                    break;
+                }
+            }
+            if (this->_system.size() == 0 || this->_alias.size() == 0) {
+                throw Exception("System/Host not found");
+            }
+        }
+    }
     vector<string> headers = SHUSH_HEADERS;
     vector<vector<string>> data;
     if (this->_system.size() == 0) {
@@ -328,6 +355,32 @@ void Shush::list_systems(bool detailed = false) {
 
 void Shush::remove_system() {
     // delete system
+    if (!this->arguments.isParserDefault(this->_remove_index)) {
+        if (isNumber(this->_remove_index)) {
+            const int index = stoi(this->_remove_index);
+            vector<SystemObject> system_header_objects = this->get_system_header_objects();
+            if (index >= (int)system_header_objects.size()) {
+                throw Exception("System not found");
+            }
+            this->_system = system_header_objects[index].system;
+            this->_alias = system_header_objects[index].alias;
+            this->systemFlag = true;
+        } else {
+            this->_system = "";
+            this->_alias = "";
+            for (SystemObject system_object : this->get_system_header_objects()) {
+                if (system_object.alias == this->_remove_index || system_object.system == this->_remove_index) {
+                    this->_system = system_object.system;
+                    this->_alias = system_object.alias;
+                    this->systemFlag = true;
+                    break;
+                }
+            }
+            if (this->_system.size() == 0 || this->_alias.size() == 0) {
+                throw Exception("System/Host not found");
+            }
+        }
+    }
     if (!this->systemFlag) {
         if (!this->aliasFlag) {
             throw Exception("System/Host or Alias is required");
@@ -398,6 +451,31 @@ void Shush::remove_system() {
 void Shush::connect_system() {
     vector<SystemObject> system_header_objects = this->get_system_header_objects();
     vector<SystemObject> system_objects = this->get_system_objects();
+    if (!this->arguments.isParserDefault(this->_connect_index)) {
+        if (isNumber(this->_connect_index)) {
+            const int index = stoi(this->_connect_index);
+            if (index >= (int)system_header_objects.size()) {
+                throw Exception("System not found");
+            }
+            this->_system = system_header_objects[index].system;
+            this->_alias = system_header_objects[index].alias;
+            this->systemFlag = true;
+        } else {
+            this->_system = "";
+            this->_alias = "";
+            for (SystemObject system_object : system_header_objects) {
+                if (system_object.alias == this->_connect_index || system_object.system == this->_connect_index) {
+                    this->systemFlag = true;
+                    this->_system = system_object.system;
+                    this->_alias = system_object.alias;
+                    break;
+                }
+            }
+            if (this->_system.size() == 0 || this->_alias.size() == 0) {
+                throw Exception("System/Host not found");
+            }
+        }
+    }
     if (this->aliasFlag) {
         this->_system = "";
         for (SystemObject system_object : system_header_objects) {

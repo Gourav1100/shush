@@ -111,4 +111,13 @@ inline std::string join(std::vector<std::string> strings, std::string delimiter)
     return result;
 };
 
+inline bool isNumber(std::string str) {
+    for (char c : str) {
+        if (!isdigit(c)) {
+            return false;
+        }
+    }
+    return true;
+};
+
 #endif
